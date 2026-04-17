@@ -10,7 +10,7 @@ import mmh3
 import urllib.request
 import re
 import csv
-from algorithms import CountMinSketch, CountSketch, CountMinAlphaNoiseCancelled, MisraGriesExtended, SpaceSavingExtended
+from algorithms import CountMinSketch, CountSketch, CountMinAlphaNoiseCancelled, MisraGriesAlphaQuarantine, MisraGriesExtended, SpaceSavingExtended, CountSketchAlphaOptimized
 from tqdm import tqdm 
 
 def create_real_world_nlp_dataset(stream_length=None, source_url="https://www.gutenberg.org/cache/epub/100/pg100.txt"):
@@ -72,7 +72,8 @@ def run_benchmark(stream_lengths, alphas, vocab_size=1000, k=20, width=50, depth
     results = []
     
     # Requirement: Evaluate on diverse datasets [cite: 31, 32]
-    dataset_types = ['Skewed', 'Balanced', 'Real-World (NLP)']
+    # dataset_types = ['Balanced']
+    dataset_types = ['Skewed', 'Balanced', 'Text Stream']
     
     # Pre-fetch the real-world dataset to prevent redundant HTTP requests in the loop
     max_len = max(stream_lengths)
@@ -89,7 +90,7 @@ def run_benchmark(stream_lengths, alphas, vocab_size=1000, k=20, width=50, depth
                     base_data = create_skewed_dataset(length, vocab_size)
                 elif ds_type == 'Balanced':
                     base_data = create_balanced_dataset(length, vocab_size)
-                elif ds_type == 'Real-World (NLP)':
+                elif ds_type == 'Text Stream':
                     base_data = full_nlp_data[:length] 
                 
                 # Materialize stream with Strict Turnstile and a-Bounded properties
@@ -105,10 +106,12 @@ def run_benchmark(stream_lengths, alphas, vocab_size=1000, k=20, width=50, depth
                     continue 
 
                 models = {
-                    'Count-Min': CountMinSketch(width, depth),
-                    'Count-Min Alpha Noise-Cancelled': CountMinAlphaNoiseCancelled(width, depth),
-                    'Count-Sketch': CountSketch(width, depth),
-                    'Misra-Gries': MisraGriesExtended(k),
+                    # 'Count-Min': CountMinSketch(width, depth),
+                    # 'Count-Min Alpha Noise-Cancelled': CountMinAlphaNoiseCancelled(width, depth),
+                    # 'Count-Sketch': CountSketch(width, depth),
+                    # 'Count-Sketch Alpha Optimized': CountSketchAlphaOptimized(width, depth),
+                    # 'Misra-Gries': MisraGriesExtended(k),
+                    # 'MisraGriesAlphaQuarantine': MisraGriesAlphaQuarantine(k, alpha),
                     'Space-Saving': SpaceSavingExtended(k)
                 }
 
@@ -146,51 +149,13 @@ def run_benchmark(stream_lengths, alphas, vocab_size=1000, k=20, width=50, depth
                     })
 
     return pd.DataFrame(results)
-
-
-def plot_parametric_evaluation(df):
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    
-    # 1. Error vs Alpha (using the longest stream length)
-    max_length = df['Stream Length'].max()
-    df_alpha = df[df['Stream Length'] == max_length]
-    for alg in df['Algorithm'].unique():
-        subset = df_alpha[df_alpha['Algorithm'] == alg]
-        axes[0].plot(subset['Alpha'], subset['Mean Relative Error'], marker='o', label=alg)
-    
-    axes[0].set_title(f'Relative Error vs Alpha (N={max_length})')
-    axes[0].set_xlabel('Alpha parameter')
-    axes[0].set_ylabel('Mean Relative Error')
-    axes[0].legend()
-    
-    # 2. Error vs Stream Length (using a fixed Alpha)
-    fixed_alpha = df['Alpha'].median() if df['Alpha'].median() in df['Alpha'].values else df['Alpha'].iloc[0]
-    df_length = df[df['Alpha'] == fixed_alpha]
-    for alg in df['Algorithm'].unique():
-        subset = df_length[df_length['Algorithm'] == alg]
-        axes[1].plot(subset['Stream Length'], subset['Mean Relative Error'], marker='s', label=alg)
-        
-    axes[1].set_title(f'Relative Error vs Stream Length (Alpha={fixed_alpha})')
-    axes[1].set_xlabel('Stream Length')
-    axes[1].set_ylabel('Mean Relative Error')
-    axes[1].legend()
-
-    # 3. Space Consumption Comparison
-    df_space = df.groupby('Algorithm')['Space (Bytes)'].mean().reset_index()
-    bars = axes[2].bar(df_space['Algorithm'], df_space['Space (Bytes)'], color=['blue', 'orange', 'green', 'red'])
-    axes[2].set_title('Average Space Consumption')
-    axes[2].set_ylabel('Bytes')
-    axes[2].tick_params(axis='x', rotation=15)
-    
-    plt.tight_layout()
-    plt.savefig('parametric_evaluation.png')
     
 
 if __name__ == "__main__":
-    stream_lengths = [50000, 100000, 200000]
-    alphas = [1.5, 2.0, 4.0]
+    stream_lengths = [50000, 100000, 200000, 500000,]
+    alphas = [1.5, 2.0, 4.0, 8.0]
 
-    benchmark_results = run_benchmark(stream_lengths, alphas, vocab_size=100000, k=10, width=20, depth=5)
+    benchmark_results = run_benchmark(stream_lengths, alphas, vocab_size=100000, k=70, width=100, depth=5)
+    benchmark_results.to_csv('space_saving_benchmark_results.csv', index=False)
     
     print(benchmark_results.head(50))
-    plot_parametric_evaluation(benchmark_results)
